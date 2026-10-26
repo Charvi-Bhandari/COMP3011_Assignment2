@@ -1,10 +1,11 @@
 /*
  * Starter code supplied for Adelaide University COMP3011 Assignment 2.
+
  * Students are free to modify this file for assessment purposes.
  * 
  * Authors:
  *   1. Simon Ratcliffe, in collaboration with GPT-5.6 Terra
- *   2. <student name and student number insert here upon modification>
+ *   2. Charvi Bhandari - a3034385
  *
  * Copyright 2026 Simon Ratcliffe
  */
@@ -29,6 +30,7 @@ public class CommandLineController {
     private boolean helpRequested;
     private boolean audioRequested;
     private boolean maximiseRequested;
+    private final List<FrameProcessor> frameProcessors = new ArrayList<>();
     private Integer displayId;
     private File videoFile;
     private String errorMessage;
@@ -42,6 +44,10 @@ public class CommandLineController {
         if (helpRequested) {
             printHelp();
         }
+    }
+    
+    public List<FrameProcessor> getFrameProcessors() {
+        return List.copyOf(frameProcessors);
     }
 
     public File getVideoFile() {
@@ -85,8 +91,10 @@ public class CommandLineController {
                 setDisplayId(1);
             } else if ("-2".equals(arg) || "--monitor-2".equals(arg)) {
                 setDisplayId(2);
+            } else if (arg.startsWith("--")) {
+                parseLongOption(arg);
             } else if (arg.startsWith("-")) {
-                errorMessage = "Unknown option: " + arg;
+                parseShortOptions(arg);
             } else {
                 videoFiles.add(arg);
             }
@@ -103,6 +111,51 @@ public class CommandLineController {
         } else {
             if (!helpRequested) {
                 errorMessage = "No video file specified.";
+            }
+        }
+          
+    }
+    
+    private void parseLongOption(String option) {
+        switch (option) {
+            case "--number-frames" -> frameProcessors.add(new FrameNumberer());
+            case "--scratch-frames" -> frameProcessors.add(new FrameScratcher());
+            case "--flicker-frames" -> frameProcessors.add(new FrameFlickerer());
+            case "--black-and-white" -> frameProcessors.add(new FrameBlackAndWhiter());
+            case "--yellow-frames" -> frameProcessors.add(new FrameYellower());
+            case "--vignette-frames" -> frameProcessors.add(new FrameVignetter());
+            case "--dust-frames" -> frameProcessors.add(new FrameDuster());
+            case "--jitter-frames" -> frameProcessors.add(new FrameJitterer());
+            case "--mottle-frames" -> frameProcessors.add(new FrameMottler());
+            case "--bleed-frames" -> frameProcessors.add(new FrameBleeder());
+            case "--pepper-frames" -> frameProcessors.add(new FramePepperer());
+            default -> errorMessage = "Unknown option: " + option;
+        }
+    }
+    
+    private void parseShortOptions(String options) {
+        for (int i = 1; i < options.length(); i++) {
+            char option = options.charAt(i);
+
+            switch (option) {
+                case 'h' -> helpRequested = true;
+                case 'a' -> audioRequested = true;
+                case 'x' -> maximiseRequested = true;
+                case 'n' -> frameProcessors.add(new FrameNumberer());
+                case 's' -> frameProcessors.add(new FrameScratcher());
+                case 'f' -> frameProcessors.add(new FrameFlickerer());
+                case 'w' -> frameProcessors.add(new FrameBlackAndWhiter());
+                case 'y' -> frameProcessors.add(new FrameYellower());
+                case 'v' -> frameProcessors.add(new FrameVignetter());
+                case 'd' -> frameProcessors.add(new FrameDuster());
+                case 'j' -> frameProcessors.add(new FrameJitterer());
+                case 'm' -> frameProcessors.add(new FrameMottler());
+                case 'b' -> frameProcessors.add(new FrameBleeder());
+                case 'p' -> frameProcessors.add(new FramePepperer());
+                default -> {
+                    errorMessage = "Unknown option: -" + option;
+                    return;
+                }
             }
         }
     }
