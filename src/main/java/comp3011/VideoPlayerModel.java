@@ -211,25 +211,38 @@ public class VideoPlayerModel {
         seekTo(baseTimestampUs + offsetUs);
     }
 
-    private void seekTo(long timestampUs) {
-        long logicalTimestampUs = clampSeekTimestamp(timestampUs);
-        long grabTimestampUs = displayableSeekTimestamp(logicalTimestampUs);
 
-        if (!playbackOpen) {
-            startPlayback(grabTimestampUs, pauseRequested, logicalTimestampUs);
-            return;
-        }
+	private void seekTo(long timestampUs) {
+	    long logicalTimestampUs = clampSeekTimestamp(timestampUs);
+	    long grabTimestampUs = displayableSeekTimestamp(logicalTimestampUs);
+	
+	    if (!playbackOpen) {
+	        startPlayback(grabTimestampUs, pauseRequested, logicalTimestampUs);
+	        return;
+	    }
+	
+	    playbackGeneration++;
+	
+	    framePreparationExecutor.submit(() -> {
+	        try {
+	            grabber.setTimestamp(grabTimestampUs);
+	
+	            Platform.runLater(() -> {
+	                if (!playbackOpen) {
+	                    return;
+	                }
+	
+	                resetPlaybackClock(logicalTimestampUs);
+	                flushAudioOutput();
+	                notifyPlaybackStateChanged();
+	                prepareNextFrame();
+	            });
+	        } catch (Exception e) {
+	            Platform.runLater(() -> handlePlaybackError(e));
+	        }
+	    });
+	}
 
-        try {
-            grabber.setTimestamp(grabTimestampUs);
-            resetPlaybackClock(logicalTimestampUs);
-            flushAudioOutput();
-            prepareNextFrame();
-            notifyPlaybackStateChanged();
-        } catch (Exception e) {
-            handlePlaybackError(e);
-        }
-    }
 
     private void startPlayback(long startTimestampUs, boolean initiallyPaused, long initialRelativeSeekBaseUs) {
         closePlaybackResources();
@@ -531,6 +544,7 @@ private void prepareNextFrame() {
     }
 
     private void closePlaybackResources() {
+    	playbackGeneration++;
         playbackTimer.stop();
         playbackOpen = false;
         preparedFrame = null;
