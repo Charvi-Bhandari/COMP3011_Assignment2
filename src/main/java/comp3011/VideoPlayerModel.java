@@ -200,6 +200,8 @@ public class VideoPlayerModel {
     private final AtomicBoolean framePreparationInProgress =
             new AtomicBoolean(false);
     
+    private final Object grabberLock = new Object();
+    
     private void seekRelative(long offsetUs) {
         if (videoFile == null) {
             return;
@@ -317,45 +319,48 @@ public class VideoPlayerModel {
         pauseStartedNs = 0;
     }
 
-
-private void prepareNextFrame() {
-    if (!playbackOpen || preparedFrame != null) {
-        return;
-    }
-
-    if (!framePreparationInProgress.compareAndSet(false, true)) {
-        return;
-    }
-
-    long generation = playbackGeneration;
-
-    framePreparationExecutor.submit(() -> {
-        try {
-            PreparedFrame nextFrame = readNextVideoFrame();
-
-            Platform.runLater(() -> {
-                try {
-                    if (playbackOpen
-                            && preparedFrame == null
-                            && generation == playbackGeneration) {
-                        preparedFrame = nextFrame;
-                    }
-                } finally {
-                    framePreparationInProgress.set(false);
-                }
-            });
-        } catch (Exception e) {
-            Platform.runLater(() -> {
-                try {
-                    if (generation == playbackGeneration) {
-                        handlePlaybackError(e);
-                    }
-                } finally {
-                    framePreparationInProgress.set(false);
-                	}
-            	});
-        	}
-    	});
+	private void prepareNextFrame() {
+	    if (!playbackOpen || preparedFrame != null) {
+	        return;
+	    }
+	
+	    if (!framePreparationInProgress.compareAndSet(false, true)) {
+	        return;
+	    }
+	
+	    long generation = playbackGeneration;
+	
+	    framePreparationExecutor.submit(() -> {
+	        try {
+	            PreparedFrame nextFrame;
+	
+	            synchronized (grabberLock) {
+	                nextFrame = readNextVideoFrame();
+	            }
+	
+	            Platform.runLater(() -> {
+	                try {
+	                    if (playbackOpen
+	                            && preparedFrame == null
+	                            && generation == playbackGeneration) {
+	                        preparedFrame = nextFrame;
+	                    }
+	                } finally {
+	                    framePreparationInProgress.set(false);
+	                }
+	            });
+	        } catch (Exception e) {
+	            Platform.runLater(() -> {
+	                try {
+	                    if (generation == playbackGeneration) {
+	                        handlePlaybackError(e);
+	                    }
+	                } finally {
+	                    framePreparationInProgress.set(false);
+	                }
+	            });
+	        }
+	    });
 	}
 
     private PreparedFrame readNextVideoFrame() throws Exception {
@@ -543,42 +548,50 @@ private void prepareNextFrame() {
         notifyPlaybackStateChanged();
     }
 
-    private void closePlaybackResources() {
-    	playbackGeneration++;
-        playbackTimer.stop();
-        playbackOpen = false;
-        preparedFrame = null;
-        pendingAudio.clear();
-        firstTimestampUs = NO_SEEK_REQUEST;
-        playbackStartNs = 0;
-        pauseStartedNs = 0;
-        audioAvailable = false;
-        frameProcessorsInitialised = false;
 
-        if (audioPlayer != null) {
-            audioPlayer.close();
-            audioPlayer = null;
-        }
+	private void closePlaybackResources() {
+	
+	    playbackGeneration++;
+	
+	    playbackTimer.stop();
+	    playbackOpen = false;
+	    preparedFrame = null;
+	    pendingAudio.clear();
+	    firstTimestampUs = NO_SEEK_REQUEST;
+	    playbackStartNs = 0;
+	    pauseStartedNs = 0;
+	    audioAvailable = false;
+	    frameProcessorsInitialised = false;
+	
+	    if (audioPlayer != null) {
+	        audioPlayer.close();
+	        audioPlayer = null;
+	    }
+	
+	    synchronized (grabberLock) {
+	        if (grabber != null) {
+	            try {
+	                grabber.stop();
+	            } catch (Exception e) {
+	                // The resource is being closed; there is no useful recovery action.
+	            }
+	
+	            try {
+	                grabber.close();
+	            } catch (Exception e) {
+	                // The resource is being closed; there is no useful recovery action.
+	            }
+	
+	            grabber = null;
+	        }
+	
+	        if (converter != null) {
+	            converter.close();
+	            converter = null;
+	        }
+	    }
+	}
 
-        if (grabber != null) {
-            try {
-                grabber.stop();
-            } catch (Exception e) {
-                // The resource is being closed; there is no useful recovery action.
-            }
-            try {
-                grabber.close();
-            } catch (Exception e) {
-                // The resource is being closed; there is no useful recovery action.
-            }
-            grabber = null;
-        }
-
-        if (converter != null) {
-            converter.close();
-            converter = null;
-        }
-    }
 
     private String mediaName(File file) {
         String fileName = file.getName();
