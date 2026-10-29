@@ -24,6 +24,7 @@ import java.util.List;
  * {@link VideoPlayerApp}.
  * </p>
  */
+
 public class CommandLineController {
     private final String[] args;
 
