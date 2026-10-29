@@ -81,6 +81,13 @@ public class CommandLineController {
     }
 
     private void parse() {
+        for (String arg : args) {
+            if ("-h".equals(arg) || "--help".equals(arg)) {
+                helpRequested = true;
+                printHelp();
+                return;
+            }
+        }
         List<String> videoFiles = new ArrayList<>();
         for (String arg : args) {
             if ("-h".equals(arg) || "--help".equals(arg)) {
