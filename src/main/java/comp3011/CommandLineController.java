@@ -35,16 +35,18 @@ public class CommandLineController {
     private File videoFile;
     private String errorMessage;
 
-    public CommandLineController(String[] args) {
-        this.args = args.clone();
-        parse();
-        if (errorMessage != null) {
-            System.out.println(errorMessage);
-        }
-        if (helpRequested) {
-            printHelp();
-        }
-    }
+
+	public CommandLineController(String[] args) {
+	    this.args = args.clone();
+	
+	    parse();
+	
+	    if (errorMessage != null) {
+	        System.out.println(errorMessage);
+	    } else if (helpRequested) {
+	        printHelp();
+	    }
+	}
     
     public List<FrameProcessor> getFrameProcessors() {
         return List.copyOf(frameProcessors);
