@@ -587,50 +587,47 @@ public class VideoPlayerModel {
         notifyPlaybackStateChanged();
     }
 
+    private void closePlaybackResources() {
+        playbackGeneration++;
 
-	private void closePlaybackResources() {
-	
-	    playbackGeneration++;
-	
-	    playbackTimer.stop();
-	    playbackOpen = false;
-	    preparedFrame = null;
-	    pendingAudio.clear();
-	    firstTimestampUs = NO_SEEK_REQUEST;
-	    playbackStartNs = 0;
-	    pauseStartedNs = 0;
-	    audioAvailable = false;
-	    frameProcessorsInitialised = false;
-	
-	    if (audioPlayer != null) {
-	        audioPlayer.close();
-	        audioPlayer = null;
-	    }
-	
-	    synchronized (grabberLock) {
-	        if (grabber != null) {
-	            try {
-	                grabber.stop();
-	            } catch (Exception e) {
-	                // The resource is being closed; there is no useful recovery action.
-	            }
-	
-	            try {
-	                grabber.close();
-	            } catch (Exception e) {
-	                // The resource is being closed; there is no useful recovery action.
-	            }
-	
-	            grabber = null;
-	        }
-	
-	        if (converter != null) {
-	            converter.close();
-	            converter = null;
-	        }
-	    }
-	}
+        playbackTimer.stop();
+        playbackOpen = false;
+        preparedFrame = null;
+        pendingAudio.clear();
+        firstTimestampUs = NO_SEEK_REQUEST;
+        playbackStartNs = 0;
+        pauseStartedNs = 0;
+        audioAvailable = false;
+        frameProcessorsInitialised = false;
 
+        synchronized (grabberLock) {
+            if (grabber != null) {
+                try {
+                    grabber.stop();
+                } catch (Exception e) {
+                    // Ignore errors while closing the grabber.
+                }
+
+                try {
+                    grabber.close();
+                } catch (Exception e) {
+                    // Ignore errors while closing the grabber.
+                }
+
+                grabber = null;
+            }
+
+            if (converter != null) {
+                converter.close();
+                converter = null;
+            }
+        }
+
+        if (audioPlayer != null) {
+            audioPlayer.close();
+            audioPlayer = null;
+        }
+    }
 
     private String mediaName(File file) {
         String fileName = file.getName();
