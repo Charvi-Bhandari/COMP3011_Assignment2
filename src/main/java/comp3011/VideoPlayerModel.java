@@ -21,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.RejectedExecutionException;
 
 import org.bytedeco.javacv.FFmpegFrameGrabber;
 import org.bytedeco.javacv.Frame;
@@ -46,7 +47,7 @@ public class VideoPlayerModel {
     private static final long NO_SEEK_REQUEST = -1; // Sentinel value used when no seek position is active.
     private static final long FIVE_SECONDS_US = 5_000_000L;
     private static final long AUDIO_LEAD_NS = 30_000_000L;
-    private long playbackGeneration = 0;
+    private volatile  long playbackGeneration = 0;
 
     private final List<FrameProcessor> frameProcessors;
     private final Queue<PendingAudio> pendingAudio = new ArrayDeque<>();
@@ -77,7 +78,7 @@ public class VideoPlayerModel {
     private AudioPlayer audioPlayer; // This is ours. It has some real time buffering smarts.
     private PreparedFrame preparedFrame; // Ours, but is just an Image with some meta-data added.
     private boolean prepareNextFrameQueued; // True only when the event loop needs to call our prepareNextFrame method.
-    private boolean playbackOpen; // True when playback is happening.
+    private volatile  boolean playbackOpen; // True when playback is happening.
     private boolean pauseRequested;
     private boolean audioOutputEnabled;
     private boolean audioAvailable;
@@ -331,44 +332,49 @@ public class VideoPlayerModel {
 	
 	    long generation = playbackGeneration;
 	
-	    framePreparationExecutor.submit(() -> {
-	        try {
-	            PreparedFrame nextFrame;
+	    try {
+	        framePreparationExecutor.submit(() -> {
+	            try {
+	                PreparedFrame nextFrame;
 	
-	            synchronized (grabberLock) {
-	                nextFrame = readNextVideoFrame();
+	                synchronized (grabberLock) {
+	                    nextFrame = readNextVideoFrame();
+	                }
+	
+	                Platform.runLater(() -> {
+	                    try {
+	                        if (playbackOpen
+	                                && preparedFrame == null
+	                                && generation == playbackGeneration) {
+	                            preparedFrame = nextFrame;
+	                        }
+	                    } finally {
+	                        framePreparationInProgress.set(false);
+	
+	                        if (playbackOpen
+	                                && generation != playbackGeneration
+	                                && preparedFrame == null) {
+	                            prepareNextFrame();
+	                        }
+	                    }
+	                });
+	            } catch (Exception e) {
+	                Platform.runLater(() -> {
+	                    try {
+	                        if (generation == playbackGeneration) {
+	                            handlePlaybackError(e);
+	                        }
+	                    } finally {
+	                        framePreparationInProgress.set(false);
+	                    }
+	                });
 	            }
-	
-	            Platform.runLater(() -> {
-	                try {
-	                    if (playbackOpen
-	                            && preparedFrame == null
-	                            && generation == playbackGeneration) {
-	                        preparedFrame = nextFrame;
-	                    }
-	                } finally {
-	                    framePreparationInProgress.set(false);
-
-	                    if (playbackOpen
-	                            && generation != playbackGeneration
-	                            && preparedFrame == null) {
-	                        prepareNextFrame();
-	                    }
-	                }
-	            });
-	        } catch (Exception e) {
-	            Platform.runLater(() -> {
-	                try {
-	                    if (generation == playbackGeneration) {
-	                        handlePlaybackError(e);
-	                    }
-	                } finally {
-	                    framePreparationInProgress.set(false);
-	                }
-	            });
-	        }
-	    });
+	        });
+	    } catch (java.util.concurrent.RejectedExecutionException e) {
+	        framePreparationInProgress.set(false);
+	    }
 	}
+
 
     private PreparedFrame readNextVideoFrame() throws Exception {
         while (playbackOpen) {
