@@ -347,6 +347,12 @@ public class VideoPlayerModel {
 	                    }
 	                } finally {
 	                    framePreparationInProgress.set(false);
+
+	                    if (playbackOpen
+	                            && generation != playbackGeneration
+	                            && preparedFrame == null) {
+	                        prepareNextFrame();
+	                    }
 	                }
 	            });
 	        } catch (Exception e) {

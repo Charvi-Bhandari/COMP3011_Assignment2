@@ -182,7 +182,7 @@ public class CommandLineController {
         System.out.println("  -1, --monitor-1    Open the player on display 1");
         System.out.println("  -2, --monitor-2    Open the player on display 2");
         System.out.println();
-        System.out.println("Frame Processors:");
+        System.out.println("Frame processors:");
         System.out.println("  -n, --number-frames    Render the frame number onto each frame");
         System.out.println("  -s, --scratch-frames   Render vertical film scratches");
         System.out.println("  -f, --flicker-frames   Randomly dim frames");
