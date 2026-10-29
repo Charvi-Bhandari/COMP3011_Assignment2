@@ -338,7 +338,9 @@ public class VideoPlayerModel {
 	                PreparedFrame nextFrame;
 	
 	                synchronized (grabberLock) {
-	                    nextFrame = readNextVideoFrame();
+	                	if (playbackOpen && generation == playbackGeneration) {
+	                		nextFrame = readNextVideoFrame();
+	                	 }
 	                }
 	
 	                Platform.runLater(() -> {
