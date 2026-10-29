@@ -50,7 +50,8 @@ public class VideoPlayerModel {
     private volatile  long playbackGeneration = 0;
 
     private final List<FrameProcessor> frameProcessors;
-    private final Queue<PendingAudio> pendingAudio = new ArrayDeque<>();
+    private final Queue<PendingAudio> pendingAudio =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
     private final BiConsumer<Integer, Integer> videoSizeChangedHandler;
     private final Consumer<Image> frameReadyHandler;
     private final Consumer<String> statusChangedHandler;
@@ -216,36 +217,50 @@ public class VideoPlayerModel {
     }
 
 
-	private void seekTo(long timestampUs) {
-	    long logicalTimestampUs = clampSeekTimestamp(timestampUs);
-	    long grabTimestampUs = displayableSeekTimestamp(logicalTimestampUs);
-	
-	    if (!playbackOpen) {
-	        startPlayback(grabTimestampUs, pauseRequested, logicalTimestampUs);
-	        return;
-	    }
-	
-	    playbackGeneration++;
-	
-	    framePreparationExecutor.submit(() -> {
-	        try {
-	            grabber.setTimestamp(grabTimestampUs);
-	
-	            Platform.runLater(() -> {
-	                if (!playbackOpen) {
-	                    return;
-	                }
-	
-	                resetPlaybackClock(logicalTimestampUs);
-	                flushAudioOutput();
-	                notifyPlaybackStateChanged();
-	                prepareNextFrame();
-	            });
-	        } catch (Exception e) {
-	            Platform.runLater(() -> handlePlaybackError(e));
-	        }
-	    });
-	}
+    private void seekTo(long timestampUs) {
+        long logicalTimestampUs = clampSeekTimestamp(timestampUs);
+        long grabTimestampUs = displayableSeekTimestamp(logicalTimestampUs);
+
+        if (!playbackOpen) {
+            startPlayback(grabTimestampUs, pauseRequested, logicalTimestampUs);
+            return;
+        }
+
+        long generation = ++playbackGeneration;
+
+        try {
+            framePreparationExecutor.submit(() -> {
+                try {
+                    synchronized (grabberLock) {
+                        if (!playbackOpen || generation != playbackGeneration) {
+                            return;
+                        }
+
+                        grabber.setTimestamp(grabTimestampUs);
+                    }
+
+                    Platform.runLater(() -> {
+                        if (!playbackOpen || generation != playbackGeneration) {
+                            return;
+                        }
+
+                        resetPlaybackClock(logicalTimestampUs);
+                        flushAudioOutput();
+                        notifyPlaybackStateChanged();
+                        prepareNextFrame();
+                    });
+                } catch (Exception e) {
+                    Platform.runLater(() -> {
+                        if (generation == playbackGeneration) {
+                            handlePlaybackError(e);
+                        }
+                    });
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            // The worker is shutting down, so the seek cannot be processed.
+        }
+    }
 
 
     private void startPlayback(long startTimestampUs, boolean initiallyPaused, long initialRelativeSeekBaseUs) {
@@ -335,24 +350,29 @@ public class VideoPlayerModel {
 	    try {
 	        framePreparationExecutor.submit(() -> {
 	            try {
-	                PreparedFrame nextFrame;
-	
-	                synchronized (grabberLock) {
-	                	if (playbackOpen && generation == playbackGeneration) {
-	                		nextFrame = readNextVideoFrame();
-	                	 }
-	                }
-	
+	            	PreparedFrame nextFrame;
+
+	            	synchronized (grabberLock) {
+	            	    if (playbackOpen && generation == playbackGeneration) {
+	            	        nextFrame = readNextVideoFrame(generation);
+	            	    } else {
+	            	        nextFrame = null;
+	            	    }
+	            	}
+	                
+	                final PreparedFrame frameToDisplay = nextFrame;
+
 	                Platform.runLater(() -> {
 	                    try {
-	                        if (playbackOpen
+	                        if (frameToDisplay != null
+	                                && playbackOpen
 	                                && preparedFrame == null
 	                                && generation == playbackGeneration) {
-	                            preparedFrame = nextFrame;
+	                            preparedFrame = frameToDisplay;
 	                        }
 	                    } finally {
 	                        framePreparationInProgress.set(false);
-	
+
 	                        if (playbackOpen
 	                                && generation != playbackGeneration
 	                                && preparedFrame == null) {
@@ -378,11 +398,15 @@ public class VideoPlayerModel {
 	}
 
 
-    private PreparedFrame readNextVideoFrame() throws Exception {
+    private PreparedFrame readNextVideoFrame(long generation) throws Exception {
         while (playbackOpen) {
             Frame frame = grabFrame();
             if (frame == null) {
-                finishPlayback();
+                Platform.runLater(() -> {
+                    if (playbackOpen && generation == playbackGeneration) {
+                        finishPlayback();
+                    }
+                });
                 return null;
             }
 
