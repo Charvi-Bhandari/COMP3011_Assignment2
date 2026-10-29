@@ -36,17 +36,15 @@ public class CommandLineController {
     private String errorMessage;
 
 
-	public CommandLineController(String[] args) {
-	    this.args = args.clone();
-	
-	    parse();
-	
-	    if (errorMessage != null) {
-	        System.out.println(errorMessage);
-	    } else if (helpRequested) {
-	        printHelp();
-	    }
-	}
+    public CommandLineController(String[] args) {
+        this.args = args.clone();
+
+        parse();
+
+        if (errorMessage != null) {
+            System.out.println(errorMessage);
+        }
+    }
     
     public List<FrameProcessor> getFrameProcessors() {
         return List.copyOf(frameProcessors);
