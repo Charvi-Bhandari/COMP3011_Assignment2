@@ -186,8 +186,9 @@ public class VideoPlayerModel {
     }
 
     public void shutdown() {
+    	framePreparationExecutor.shutdownNow();
         closePlaybackResources();
-        framePreparationExecutor.shutdownNow();
+        
     }
 
     private final ExecutorService framePreparationExecutor =
